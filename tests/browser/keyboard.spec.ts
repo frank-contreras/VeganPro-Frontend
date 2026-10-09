@@ -1,5 +1,6 @@
 import { locales, publicCopy } from './copy'
 import { expect, test } from '@playwright/test'
+import { observeFilterFocus } from './focusDiagnostics'
 
 function contrast(a: string, b: string) {
   const luminance = (color: string) => {
@@ -15,7 +16,7 @@ function contrast(a: string, b: string) {
 
 for (const locale of locales) {
   const copy = publicCopy[locale]
-  test(`${locale} keyboard can navigate native filters and clear with visible, contrasting focus`, async ({ page }) => {
+  test(`${locale} keyboard can navigate native filters and clear with visible, contrasting focus`, async ({ page, browser }, testInfo) => {
     await page.goto('./')
     if (locale === 'en') await page.getByRole('combobox', { name: 'Idioma' }).selectOption('en')
     await page.locator('body').click({ position: { x: 1, y: 1 } })
@@ -58,25 +59,53 @@ for (const locale of locales) {
     expect(contrast(colors.outline, 'rgb(255, 255, 255)')).toBeGreaterThanOrEqual(3)
     expect(contrast(colors.border, colors.background)).toBeGreaterThanOrEqual(3)
     expect(contrast(colors.text, colors.background)).toBeGreaterThanOrEqual(4.5)
-    // Selection setup is separate from Tab navigation: Enter can open a native
-    // select popup on Linux and let that popup consume the next Tab.
-    await category.selectOption('nutrition')
-    await expect(category).toHaveValue('nutrition')
-    await expect(page.getByRole('article')).toHaveCount(2)
-    await expect(category).toBeFocused()
-    await page.keyboard.press('Tab')
-    const affiliation = page.getByRole('combobox', { name: copy.affiliation })
-    await expect(affiliation).toBeFocused()
-    await page.keyboard.press('Shift+Tab')
-    await expect(category).toBeFocused()
-    await page.keyboard.press('Tab')
-    await expect(affiliation).toBeFocused()
-    await page.keyboard.press('Tab')
-    const clear = page.getByRole('button', { name: copy.clear })
-    await expect(clear).toBeFocused()
-    await clear.press('Enter')
-    await expect(page.getByRole('article')).toHaveCount(6)
-    await expect(clear).toBeFocused()
+    const probe = await observeFilterFocus(page)
+    const snapshots: Array<{ phase: string; active: unknown; controls: unknown; candidates: unknown }> = []
+    const capture = async (phase: string) => {
+      const state = await probe.evaluate((observer) => observer.snapshot())
+      snapshots.push({ phase, ...state })
+      return state
+    }
+    const traverse = async (key: string, phase: string) => {
+      await capture(`before ${phase}`)
+      await page.keyboard.press(key)
+      // Capture before any auto-retrying focus assertion can obscure the move.
+      await capture(`immediately after ${phase}`)
+    }
+    try {
+      await capture('before selection')
+      // No Enter or popup-opening key is sent during selection setup.
+      await category.selectOption('nutrition')
+      await expect(category).toHaveValue('nutrition')
+      await expect(page.getByRole('article')).toHaveCount(2)
+      await expect(category).toBeFocused()
+      const beforeTab = await capture('after selection')
+      expect(beforeTab.controls.every((control) => control.sameNode && control.originalConnected)).toBe(true)
+      expect(beforeTab.candidates.filter((element) => element?.inFilters).map((element) => element?.id))
+        .toEqual(beforeTab.controls.map((control) => control.current?.id))
+      for (const control of beforeTab.controls) {
+        expect(control.current).toMatchObject({ tabIndex: 0, tabindexAttribute: null, disabled: false, hidden: false, hiddenAncestor: false, inert: false, rendered: true, visibility: 'visible' })
+      }
+      await traverse('Tab', 'category to affiliation')
+      const affiliation = page.getByRole('combobox', { name: copy.affiliation })
+      await expect(affiliation).toBeFocused()
+      await traverse('Shift+Tab', 'affiliation to category')
+      await expect(category).toBeFocused()
+      await traverse('Tab', 'category to affiliation again')
+      await expect(affiliation).toBeFocused()
+      await traverse('Tab', 'affiliation to clear')
+      const clear = page.getByRole('button', { name: copy.clear })
+      await expect(clear).toBeFocused()
+      await clear.press('Enter')
+      await expect(page.getByRole('article')).toHaveCount(6)
+      await expect(clear).toBeFocused()
+    } finally {
+      const observation = await probe.evaluate((observer) => observer.finish())
+      const diagnostics = JSON.stringify({ locale, platform: process.platform, browserVersion: browser.version(), retry: testInfo.retry, snapshots, ...observation }, null, 2)
+      console.log(`FILTER_FOCUS_DIAGNOSTICS ${diagnostics}`)
+      await testInfo.attach('filter-focus-diagnostics', { body: diagnostics, contentType: 'application/json' })
+      await probe.dispose()
+    }
   })
 
   test(`${locale} keyboard typeahead selects a category and filters without moving focus`, async ({ page }) => {
