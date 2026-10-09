@@ -1,5 +1,38 @@
 # Public experience localization validation
 
+## Keyboard CI follow-up — 2026-10-09
+
+**Finding: platform-dependent native-select test interaction (classification 2);
+no application tab-order defect found.** See
+[investigation and scoped plan](keyboard-ci-follow-up.md). The original test's
+Enter after typeahead can open a native popup; select DOM focus does not prove
+that popup is closed before Tab. The exact Linux failure popup state remains
+inferred from the reported failure and Chromium keyboard handling, not observed
+in a retained CI trace.
+
+Updated browser tests separate selection setup from genuine Tab navigation and
+retain independent es/en keyboard typeahead coverage. Added reverse Shift+Tab
+coverage. Existing locale/discovery/focus contrast/Clear/recovery assertions
+remain. Application code, dependencies and workflows are unchanged; browser
+tests and SDD artifacts changed.
+
+| Executed check | Status | Evidence |
+| --- | --- | --- |
+| Focused `tests/browser/keyboard.spec.ts` | PASS | 6 Chromium tests, both locales. |
+| `npm test` | PASS | 56 tests across 11 files. |
+| `npm run lint` / `npm run typecheck` | PASS | No errors. |
+| `npm run test:browser` | PASS | 68 tests at root. |
+| `npm run test:browser:subpath` | PASS | 68 tests at `/prototype/`. |
+| Production build | PASS | Typechecked builds executed by both browser suites. |
+| Linux Actions rerun / original failing trace | UNVERIFIED | No CI trace available; local Docker runs Linux but has no Node/Playwright image. No Linux browser run performed. |
+| Native assistive-technology acceptance | UNVERIFIED | Existing AC-L07/AC-L08 limits remain. |
+| Application focus remediation | NOT APPLICABLE | Natural native order is preserved. |
+
+Execution environment: macOS ARM64, local pinned Playwright/Chromium. Local
+servers/browser required sandbox escalation. The next Ubuntu Actions run must
+confirm the corrected interaction on the actual CI runner. Historical 66-test
+counts below precede the two added typeahead cases.
+
 ## Current SDD validation — 2026-10-08
 
 **Result: automated validation PASS; manual accessibility acceptance remains

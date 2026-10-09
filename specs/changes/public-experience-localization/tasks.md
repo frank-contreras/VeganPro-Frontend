@@ -211,8 +211,9 @@ excluded. This plan does not modify code or authorize a deployment.
   disclosures/footer, screenshots for clipping/overlap and axe. Verify tab order
   skip → selector → discovery → enabled filters → clear → optional recovery,
   selector retention, hero destination and recovery focus. Initial disabled
-  filters correctly drop out of tab order. Use localized native-select typeahead
-  without changing values. Check computed text/control/focus contrast, wrapping
+  filters correctly drop out of tab order. Test localized native-select typeahead
+  independently from Tab navigation; use selectOption for filtered-state setup
+  without opening a platform-specific popup with Enter. Check computed text/control/focus contrast, wrapping
   and reduced-motion preference. Inspect screenshots; do not infer visual PASS
   from geometry alone. Fix only presentation defects; record browser limits.
 - **Evidence:** PASS: 60 Chromium layout/axe/overflow checks (es/en × normal/long copy × five states × three widths), bilingual keyboard/contrast/recovery tests and reduced-motion checks. Representative screenshots visually inspected; see validation.md for exact scope. Native announcements are separately UNVERIFIED.
